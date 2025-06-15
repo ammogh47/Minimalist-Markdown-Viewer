@@ -2,7 +2,12 @@
 
 A clean, lightweight, and user-friendly markdown viewer with drag-and-drop functionality. Built with React, TypeScript, and Vite.
 
-![Screenshot](screenshot.png)
+## Screenshot
+
+![Minimalist Markdown Viewer Interface](screenshot.png)
+*The main interface of Minimalist Markdown Viewer showing the drag and drop area*
+
+> **Note:** To add the screenshot, please save an image named `screenshot.png` in the project root directory.
 
 ## Features
 

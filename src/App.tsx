@@ -1,6 +1,6 @@
 import  { useState, useCallback, useEffect } from 'react'; 
 import { marked } from 'marked';
-import { FileText, Upload, Plus, X, Home } from 'lucide-react';  
+import { Upload, Plus, X, Home, Edit, Download } from 'lucide-react';  
 
 interface  Tab {
   id: string;
@@ -18,7 +18,11 @@ function App() {
   }]);
   const [activeTabId, setActiveTabId] = useState('1');
   const [nextTabId, setNextTabId] = useState(2);
-  const [showHomeTab, setShowHomeTab] = useState(false); 
+  const [showHomeTab, setShowHomeTab] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [modalContent, setModalContent] = useState('');
+  const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{x: number, y: number, tabId: string} | null>(null); 
 
   // Handle scroll-based blur effect and home tab visibility
   useEffect(() => {
@@ -223,7 +227,102 @@ function App() {
 
   const openTab = (tabId: string) => {
     setActiveTabId(tabId);
-  }; 
+  };
+
+  const openModal = (tabId?: string) => {
+    if (tabId) {
+      const tab = tabs.find(t => t.id === tabId);
+      setModalContent(tab?.content || '');
+      setEditingTabId(tabId);
+    } else {
+      setModalContent('');
+      setEditingTabId(null);
+    }
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setModalContent('');
+    setEditingTabId(null);
+  };
+
+  const saveModal = () => {
+    if (editingTabId) {
+      // Update existing tab
+      setTabs(prevTabs => 
+        prevTabs.map(tab => 
+          tab.id === editingTabId 
+            ? { ...tab, content: modalContent }
+            : tab
+        )
+      );
+    } else {
+      // Create new tab or update current empty tab
+      const currentTab = tabs.find(tab => tab.id === activeTabId);
+      if (currentTab && !currentTab.content.trim()) {
+        // Update current empty tab
+        setTabs(prevTabs => 
+          prevTabs.map(tab => 
+            tab.id === activeTabId 
+              ? { 
+                  ...tab, 
+                  content: modalContent,
+                  title: modalContent.split('\n')[0].replace(/^#+\s*/, '').slice(0, 20) || 'Untitled'
+                }
+              : tab
+          )
+        );
+      } else {
+        // Create new tab
+        const newTab: Tab = {
+          id: nextTabId.toString(),
+          title: modalContent.split('\n')[0].replace(/^#+\s*/, '').slice(0, 20) || 'Untitled',
+          content: modalContent,
+          isDragging: false
+        };
+        setTabs(prevTabs => [...prevTabs, newTab]);
+        setActiveTabId(newTab.id);
+        setNextTabId(prev => prev + 1);
+      }
+    }
+    closeModal();
+  };
+
+  const downloadMarkdown = (tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    
+    const blob = new Blob([tab.content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${tab.title}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, tabId: string) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      tabId
+    });
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu(null);
+  };
+
+  // Close context menu on click outside
+  useEffect(() => {
+    const handleClick = () => closeContextMenu();
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []); 
 
    return (
     <div className="min-h-screen bg-gray-50">
@@ -245,7 +344,7 @@ function App() {
             </div>
           )}
           
-          {tabs.map((tab) => (
+                   {tabs.map((tab) => (
             <div
               key={tab.id}
               className={`flex items-center min-w-0 max-w-32 px-2 py-0.5 rounded-md cursor-pointer transition-all duration-200 ${
@@ -254,6 +353,7 @@ function App() {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
               onClick={() => setActiveTabId(tab.id)}
+              onContextMenu={(e) => handleContextMenu(e, tab.id)}
             >
               <span className="font-medium truncate mr-1 flex-1 text-xs">
                 {tab.title}
@@ -274,7 +374,7 @@ function App() {
                 </button>
               )}
             </div>
-          ))}
+          ))} 
           
           {/* Add New Tab Button */}
           <button
@@ -340,15 +440,16 @@ function App() {
             </div>
           </div>
         ) : !activeTab?.content ? ( 
-          <div
-                       className={`h-[calc(100vh-44px)] flex flex-col items-center justify-center transition-colors duration-200 ${ 
-              activeTab?.isDragging ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-300'
-            } border-2 border-dashed m-6 rounded-xl`} 
+                   <div
+            className="h-[calc(100vh-44px)] flex flex-col items-center justify-center bg-gray-50"
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
           >
-            <div className="text-center">
+            <div className={`transition-colors duration-200 p-12 rounded-xl border-2 border-dashed ${
+              activeTab?.isDragging ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-300'
+            }`}>
+              <div className="text-center"> 
               <div className="mb-6">
                 {activeTab?.isDragging ? (
                   <Upload className="mx-auto h-16 w-16 text-blue-500" />
@@ -360,16 +461,23 @@ function App() {
                   />
                 )}
               </div>
-                           <p className="text-2xl font-medium text-gray-700 mb-3">
+              <p className="text-2xl font-medium text-gray-700 mb-3">
                 {activeTab?.isDragging ? 'Drop your markdown files here' : 'Drop multiple markdown files'}
               </p>
-              <p className="text-base text-gray-500 mb-2">
+              <p className="text-base text-gray-500 mb-4">
                 Select multiple .md files and drop them here
               </p>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-gray-400 mb-6">
                 Each markdown file will open in its own tab
-              </p> 
+              </p>
+                           <button
+                onClick={() => openModal()}
+                className="px-3 py-1 bg-black text-white text-xs rounded hover:bg-gray-800 transition-colors"
+              >
+                Paste Markdown Text
+              </button>
             </div>
+            </div> 
           </div>
         ) : (
           <div className="max-w-4xl mx-auto px-8 py-12 bg-white min-h-[calc(100vh-44px)]"> 
@@ -380,6 +488,76 @@ function App() {
           </div>
         )} 
       </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-3/4 flex flex-col m-4">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="text-lg font-semibold">
+                {editingTabId ? 'Edit Markdown' : 'Paste Markdown Text'}
+              </h2>
+              <button
+                onClick={closeModal}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 p-4">
+              <textarea
+                value={modalContent}
+                onChange={(e) => setModalContent(e.target.value)}
+                placeholder="Paste your markdown content here..."
+                className="w-full h-full resize-none border border-gray-300 rounded-lg p-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              <button
+                onClick={closeModal}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveModal}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                {editingTabId ? 'Update' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={() => {
+              openModal(contextMenu.tabId);
+              closeContextMenu();
+            }}
+            className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+          >
+            <Edit className="w-4 h-4 mr-2" />
+            Edit
+          </button>
+          <button
+            onClick={() => {
+              downloadMarkdown(contextMenu.tabId);
+              closeContextMenu();
+            }}
+            className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Download
+          </button>
+        </div>
+      )}
     </div>
   ); 
 }
